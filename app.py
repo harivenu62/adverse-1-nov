@@ -14,7 +14,6 @@
 
 # Create a new notebook → add this cell → run:
 
-!pip install feedparser requests pandas matplotlib
 
 # STEP 2 — Import Libraries
 import requests, feedparser, pandas as pd, urllib.parse, matplotlib.pyplot as plt
