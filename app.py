@@ -1,97 +1,76 @@
-# FULL WORKING SAM-Radar (Smart Adverse Media Radar) - Google Colab Version
+import streamlit as st
+import feedparser
+import requests
+import pandas as pd
+import urllib.parse
+import matplotlib.pyplot as plt
 
-# This version is:
+st.set_page_config(page_title="SAM-Radar", layout="wide")
 
-# - Simple
-# - No API keys required
-# - Runs inside Colab
-# - Fetches Adverse Media
-# - Summarizes using fallback logic
-# - Gives Risk Level (High/Medium/Low)
-# - Exports CSV
+st.title("🛰️ SAM-Radar — Smart Adverse Media Radar")
+st.write("Enter an entity name to scan news for possible adverse media.")
 
-# STEP 1 — Install Required Libraries
+entity = st.text_input("Company or Individual Name")
+limit = st.slider("Number of articles to fetch", 5, 20, 8)
 
-# Create a new notebook → add this cell → run:
-
-
-# STEP 2 — Import Libraries
-import requests, feedparser, pandas as pd, urllib.parse, matplotlib.pyplot as plt
-
-# STEP 3 — Function: Fetch News (Google RSS)
 def fetch_news(entity, limit=10):
     query = urllib.parse.quote(f"{entity} fraud OR scam OR money laundering OR crime OR corruption")
     url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
     feed = feedparser.parse(url)
-
     articles = []
-    for item in feed.entries[:limit]:
+    for i in feed.entries[:limit]:
         articles.append({
-            "title": item.title,
-            "summary": item.summary,
-            "link": item.link,
-            "published": getattr(item, "published", "N/A"),
+            "title": i.title,
+            "summary": getattr(i, "summary", ""),
+            "link": i.link,
+            "published": getattr(i, "published", "N/A")
         })
     return articles
-
-# STEP 4 — Summarizer Function (Simple Fallback)
-
-# Since you want zero installs, we use a clean fallback summarizer.
 
 def summarize(text):
     return text[:300] + "..."
 
-# STEP 5 — Risk Level Logic
 def risk_level(text):
-    text_lower = text.lower()
-
-    high_keywords = ["fraud", "money laundering", "scam", "crime", "corruption", "arrest", "lawsuit", "fine", "sanction", "fraudulent", "illegal"]
-    medium_keywords = ["probe", "investigation", "regulatory", "unethical"]
+    t = text.lower()
+    high = ["fraud", "money laundering", "scam", "crime", "corruption", "arrest"]
+    medium = ["probe", "investigation", "regulatory"]
 
     score = 0
-    for w in high_keywords:
-        if w in text_lower:
+    for w in high:
+        if w in t:
             score += 2
-    for w in medium_keywords:
-        if w in text_lower:
+    for w in medium:
+        if w in t:
             score += 1
 
-    if score >= 2:
-        return "High"
-    elif score == 1:
-        return "Medium"
-    else:
-        return "Low"
+    if score >= 2: return "High"
+    if score == 1: return "Medium"
+    return "Low"
 
-# STEP 6 — Enter Entity Name
-entity = input("Enter Company or Individual Name: ")
+if st.button("🔍 Scan Now"):
+    with st.spinner("Scanning news..."):
+        articles = fetch_news(entity, limit)
+        output = []
+        for a in articles:
+            summary = summarize(a["summary"])
+            risk = risk_level(summary)
+            output.append({
+                "Title": a["title"],
+                "Summary": summary,
+                "Risk Level": risk,
+                "Source Link": a["link"],
+                "Published": a["published"],
+            })
 
-articles = fetch_news(entity, limit=8)
-articles
+        df = pd.DataFrame(output)
 
-# STEP 7 — Process Articles
-processed = []
+        st.subheader("Results")
+        st.dataframe(df)
 
-for art in articles:
-    summary = summarize(art["summary"])
-    risk = risk_level(summary)
+        st.subheader("Risk Chart")
+        fig, ax = plt.subplots()
+        df["Risk Level"].value_counts().plot(kind="pie", autopct="%1.1f%%", ax=ax)
+        st.pyplot(fig)
 
-    processed.append({
-        "Title": art["title"],
-        "Summary": summary,
-        "Risk Level": risk,
-        "Source Link": art["link"],
-        "Published": art["published"],
-    })
-
-df = pd.DataFrame(processed)
-df
-
-# STEP 8 — Visualize Risk Levels
-df['Risk Level'].value_counts().plot(kind='pie', autopct='%1.1f%%', figsize=(5,5))
-plt.title("Risk Distribution")
-plt.show()
-
-# STEP 9 — Export CSV
-df.to_csv(f"SAM-Radar_{entity.replace(' ','_')}.csv", index=False)
-print("CSV Exported Successfully!")
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download CSV", csv, "SAM_Radar.csv", "text/csv")
